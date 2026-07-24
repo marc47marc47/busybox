@@ -156,6 +156,7 @@ static ALWAYS_INLINE int bb_sigisemptyset(const sigset_t *set)
 # include <arpa/inet.h>
 #elif defined __APPLE__
 # include <netinet/in.h>
+# include <arpa/inet.h>
 #else
 # include <arpa/inet.h>
 //This breaks on bionic:
