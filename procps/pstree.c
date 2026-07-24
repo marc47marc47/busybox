@@ -184,8 +184,10 @@ static void add_proc(const char *comm, pid_t pid, pid_t ppid,
 		this->uid = uid;
 	}
 
-	if (pid == ppid)
-		ppid = 0;
+	if (pid == ppid) {
+		this->parent = NULL;
+		return;
+	}
 //	if (isthread)
 //		this->flags |= PFLAG_THREAD;
 
@@ -374,12 +376,34 @@ static void mread_proc(void)
 #endif
 		}
 	}
+#if defined(__CYGWIN__)
+	/*
+	 * Windows keeps the original PPID after a parent exits instead of
+	 * reparenting the process.  Attach those otherwise unreachable trees
+	 * below PID 0 so pstree displays the complete process forest.
+	 */
+	{
+		PROC *root = find_proc(0);
+		PROC *walk;
+
+		for (walk = G.list; root && walk; walk = walk->next) {
+			if (walk != root && !walk->parent) {
+				add_child(root, walk);
+				walk->parent = root;
+			}
+		}
+	}
+#endif
 }
 
 int pstree_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int pstree_main(int argc UNUSED_PARAM, char **argv)
 {
+#if defined(__CYGWIN__)
+	pid_t pid = 0;
+#else
 	pid_t pid = 1;
+#endif
 	long uid = 0;
 
 	INIT_G();
@@ -402,7 +426,7 @@ int pstree_main(int argc UNUSED_PARAM, char **argv)
 	if (!uid)
 		dump_tree(find_proc(pid), 0, 1, 1, 1, 0);
 	else {
-		dump_by_user(find_proc(1), uid);
+		dump_by_user(find_proc(pid), uid);
 		if (!G.dumped) {
 			bb_simple_error_msg_and_die("no processes found");
 		}

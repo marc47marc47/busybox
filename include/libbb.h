@@ -20,6 +20,19 @@
 #include <netdb.h>
 #include <setjmp.h>
 #include <signal.h>
+#if defined(__CYGWIN__)
+static ALWAYS_INLINE int bb_sigisemptyset(const sigset_t *set)
+{
+	int sig;
+
+	for (sig = 1; sig < NSIG; sig++) {
+		if (sigismember(set, sig) == 1)
+			return 0;
+	}
+	return 1;
+}
+# define sigisemptyset bb_sigisemptyset
+#endif
 #include <paths.h>
 #if defined __UCLIBC__ /* TODO: and glibc? */
 /* use inlined versions of these: */
@@ -2177,7 +2190,9 @@ int read_line_input(const char* prompt, char* command, int maxsize) FAST_FUNC;
 unsigned long* FAST_FUNC get_malloc_cpu_affinity(int pid, unsigned *sz);
 
 #ifndef COMM_LEN
-# ifdef TASK_COMM_LEN
+# if defined(__CYGWIN__)
+enum { COMM_LEN = 64 };
+# elif defined(TASK_COMM_LEN)
 enum { COMM_LEN = TASK_COMM_LEN };
 # else
 /* synchronize with sizeof(task_struct.comm) in /usr/include/linux/sched.h */
@@ -2188,6 +2203,11 @@ enum { COMM_LEN = 16 };
 typedef struct procps_status_t {
 	DIR *dir;
 	IF_FEATURE_SHOW_THREADS(DIR *task_dir;)
+#if defined(__CYGWIN__)
+	/* Native Windows SystemProcessInformation snapshot state. */
+	void *win_proc_buf;
+	unsigned long win_proc_offset;
+#endif
 	uint8_t shift_pages_to_bytes;
 	uint8_t shift_pages_to_kb;
 /* Fields are set to 0/NULL if failed to determine (or not requested) */
@@ -2223,6 +2243,9 @@ typedef struct procps_status_t {
 	unsigned long stack;
 #endif
 	char state[4];
+#if defined(__CYGWIN__)
+	char win_user[64];
+#endif
 	/* basename of executable in exec(2), read from /proc/N/stat
 	 * (if executable is symlink or script, it is NOT replaced
 	 * by link target or interpreter name) */
@@ -2267,6 +2290,7 @@ enum {
 //procps_status_t* alloc_procps_scan(void) FAST_FUNC;
 void free_procps_scan(procps_status_t* sp) FAST_FUNC;
 procps_status_t* procps_scan(procps_status_t* sp, int flags) FAST_FUNC;
+int bb_process_kill(pid_t pid, int signo) FAST_FUNC;
 /* Format cmdline (up to col chars) into char buf[size] */
 /* Puts [comm] if cmdline is empty (-> process is a kernel thread) */
 int read_cmdline(char *buf, int size, unsigned pid, const char *comm) FAST_FUNC;

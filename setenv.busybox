@@ -1,0 +1,20 @@
+# Source this file from an MSYS2, Git SDK, or Cygwin Bash shell:
+#
+#   source setenv.busybox
+
+case "$(uname -s 2>/dev/null)" in
+	CYGWIN*|MSYS*|MINGW*) ;;
+	*)
+		echo "setenv.busybox: an MSYS2, Git SDK, or Cygwin shell is required" >&2
+		return 1 2>/dev/null || exit 1
+		;;
+esac
+
+# Put POSIX build tools ahead of native Windows toolchains inherited through
+# PATH.  In particular, this prevents an unrelated make.exe from being used.
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+
+if [[ -z ${BUSYBOX_BUILD_JOBS:-} ]]; then
+	BUSYBOX_BUILD_JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+	export BUSYBOX_BUILD_JOBS
+fi

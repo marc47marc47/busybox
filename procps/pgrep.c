@@ -97,7 +97,7 @@ static void act(unsigned pid, char *cmd, int signo)
 		else
 			printf("%u\n", pid);
 	} else {
-		kill(pid, signo);
+		bb_process_kill(pid, signo);
 		if (option_mask32 & (1 << OPTBIT_E)) {
 			printf("%s killed (pid %u)\n", cmd, pid);
 		}

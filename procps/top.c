@@ -132,6 +132,9 @@ typedef struct top_status_t {
 #endif
 	unsigned pid, ppid;
 	unsigned uid;
+#if defined(__CYGWIN__)
+	char win_user[64];
+#endif
 	char state[4];
 	char comm[COMM_LEN];
 #if ENABLE_FEATURE_TOP_SMP_PROCESS
@@ -761,7 +764,13 @@ static NOINLINE void display_process_list(void)
 
 		smart_ulltoa5(s->memsize, memsize_str_buf, " mgtpezy");
 		/* PID PPID USER STAT VSZ %VSZ [%CPU] COMMAND */
-		n = sprintf(ppubuf, "%5u %5u %-8.8s", s->pid, s->ppid, get_cached_username(s->uid));
+#if defined(__CYGWIN__)
+		n = sprintf(ppubuf, "%5u %5u %-8.8s", s->pid, s->ppid,
+				s->win_user[0] ? s->win_user : get_cached_username(s->uid));
+#else
+		n = sprintf(ppubuf, "%5u %5u %-8.8s", s->pid, s->ppid,
+				get_cached_username(s->uid));
+#endif
 		ppu = ppubuf;
 		if (n != 6+6+8) {
 			/* Format PID PPID USER part into 6+6+8 chars:
@@ -1305,6 +1314,10 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 				top[n].ticks = p->stime + p->utime;
 #endif
 				top[n].uid = p->uid;
+#if defined(__CYGWIN__)
+				safe_strncpy(top[n].win_user, p->win_user,
+						sizeof(top[n].win_user));
+#endif
 				strcpy(top[n].state, p->state);
 				strcpy(top[n].comm, p->comm);
 #if ENABLE_FEATURE_TOP_SMP_PROCESS

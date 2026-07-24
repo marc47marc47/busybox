@@ -10,6 +10,295 @@
  */
 #include "libbb.h"
 
+#if defined(__CYGWIN__)
+# define WIN32_LEAN_AND_MEAN
+# include <windows.h>
+# include <winternl.h>
+
+# define BB_STATUS_INFO_LENGTH_MISMATCH ((NTSTATUS)0xc0000004L)
+
+static procps_status_t* FAST_FUNC alloc_procps_scan(void);
+
+typedef struct {
+	USHORT length;
+	USHORT maximum_length;
+	PWSTR buffer;
+} bb_win_unicode_string;
+
+static char *win_wide_to_utf8(const WCHAR *src, unsigned wchar_count)
+{
+	char *dst;
+	int len;
+
+	if (!src || wchar_count == 0)
+		return NULL;
+	len = WideCharToMultiByte(CP_UTF8, 0, src, wchar_count,
+			NULL, 0, NULL, NULL);
+	if (len <= 0)
+		return NULL;
+	dst = xmalloc(len + 1);
+	WideCharToMultiByte(CP_UTF8, 0, src, wchar_count,
+			dst, len, NULL, NULL);
+	dst[len] = '\0';
+	return dst;
+}
+
+static void *win_process_snapshot(void)
+{
+	ULONG size = 512 * 1024;
+	void *buf = NULL;
+
+	for (;;) {
+		ULONG needed = 0;
+		NTSTATUS status;
+
+		buf = xrealloc(buf, size);
+		status = NtQuerySystemInformation(SystemProcessInformation,
+				buf, size, &needed);
+		if (status == BB_STATUS_INFO_LENGTH_MISMATCH) {
+			size = needed > size ? needed + 64 * 1024 : size * 2;
+			continue;
+		}
+		if (status < 0) {
+			free(buf);
+			errno = EIO;
+			return NULL;
+		}
+		return buf;
+	}
+}
+
+static char *win_process_image_path(unsigned pid)
+{
+	WCHAR path[1024];
+	DWORD length = ARRAY_SIZE(path);
+	HANDLE process;
+	char *result = NULL;
+
+	process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+	if (!process)
+		return NULL;
+	if (QueryFullProcessImageNameW(process, 0, path, &length))
+		result = win_wide_to_utf8(path, length);
+	CloseHandle(process);
+	return result;
+}
+
+static void win_process_user(unsigned pid, char *dst, unsigned dst_size)
+{
+	HANDLE process;
+	HANDLE token;
+	DWORD size = 0;
+	void *token_buf = NULL;
+	WCHAR name[256];
+	WCHAR domain[256];
+	DWORD name_size = ARRAY_SIZE(name);
+	DWORD domain_size = ARRAY_SIZE(domain);
+	SID_NAME_USE sid_type;
+	char *utf8_name = NULL;
+
+	process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+	if (!process)
+		return;
+	if (!OpenProcessToken(process, TOKEN_QUERY, &token))
+		goto close_process;
+	GetTokenInformation(token, TokenUser, NULL, 0, &size);
+	if (!size)
+		goto close_token;
+	token_buf = xmalloc(size);
+	if (!GetTokenInformation(token, TokenUser, token_buf, size, &size))
+		goto close_token;
+	if (!LookupAccountSidW(NULL, ((TOKEN_USER *)token_buf)->User.Sid,
+			name, &name_size, domain, &domain_size, &sid_type))
+		goto close_token;
+	utf8_name = win_wide_to_utf8(name, name_size);
+	if (utf8_name)
+		safe_strncpy(dst, utf8_name, dst_size);
+
+ close_token:
+	free(utf8_name);
+	free(token_buf);
+	CloseHandle(token);
+ close_process:
+	CloseHandle(process);
+}
+
+static char *win_process_command_line(unsigned pid)
+{
+	PROCESS_BASIC_INFORMATION info;
+	ULONG returned;
+	HANDLE process;
+	PVOID params;
+	bb_win_unicode_string command_line;
+	WCHAR *wide = NULL;
+	SIZE_T bytes_read;
+	char *result = NULL;
+	SIZE_T params_offset;
+	SIZE_T command_line_offset;
+
+# if defined(__x86_64__)
+	params_offset = 0x20;
+	command_line_offset = 0x70;
+# else
+	params_offset = 0x10;
+	command_line_offset = 0x40;
+# endif
+
+	process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+			FALSE, pid);
+	if (!process)
+		return NULL;
+	if (NtQueryInformationProcess(process, ProcessBasicInformation,
+			&info, sizeof(info), &returned) < 0)
+		goto done;
+	if (!ReadProcessMemory(process,
+			(char *)info.PebBaseAddress + params_offset,
+			&params, sizeof(params), &bytes_read)
+	 || bytes_read != sizeof(params)
+	 || !params)
+		goto done;
+	if (!ReadProcessMemory(process,
+			(char *)params + command_line_offset,
+			&command_line, sizeof(command_line), &bytes_read)
+	 || bytes_read != sizeof(command_line)
+	 || !command_line.buffer
+	 || command_line.length == 0
+	 || command_line.length > 64 * 1024)
+		goto done;
+	wide = xmalloc(command_line.length + sizeof(WCHAR));
+	if (!ReadProcessMemory(process, command_line.buffer, wide,
+			command_line.length, &bytes_read)
+	 || bytes_read != command_line.length)
+		goto done;
+	wide[command_line.length / sizeof(WCHAR)] = L'\0';
+	result = win_wide_to_utf8(wide,
+			command_line.length / sizeof(WCHAR));
+
+ done:
+	free(wide);
+	CloseHandle(process);
+	return result;
+}
+
+static void win_keep_first_argument(char *cmd)
+{
+	char *src;
+	char *dst = cmd;
+	char quote = '\0';
+
+	while (isspace((unsigned char)*cmd))
+		cmd++;
+	if (*cmd == '"' || *cmd == '\'')
+		quote = *cmd++;
+	src = cmd;
+	while (*src) {
+		if ((quote && *src == quote) || (!quote && isspace((unsigned char)*src)))
+			break;
+		*dst++ = *src++;
+	}
+	*dst = '\0';
+}
+
+static procps_status_t *procps_scan_windows(procps_status_t *sp, int flags)
+{
+	SYSTEM_PROCESS_INFORMATION *pi;
+	char *name;
+	unsigned long offset;
+	unsigned long ticks_per_second;
+	unsigned long long ticks_divisor;
+
+	if (!sp)
+		sp = alloc_procps_scan();
+	if (!sp->win_proc_buf
+	 || sp->win_proc_offset == (unsigned long)-1
+	) {
+		free_procps_scan(sp);
+		return NULL;
+	}
+
+	offset = sp->win_proc_offset;
+	pi = (SYSTEM_PROCESS_INFORMATION *)((char *)sp->win_proc_buf + offset);
+	if (pi->NextEntryOffset)
+		sp->win_proc_offset = offset + pi->NextEntryOffset;
+	else
+		sp->win_proc_offset = (unsigned long)-1;
+
+	free(sp->argv0);
+	sp->argv0 = NULL;
+	free(sp->exe);
+	sp->exe = NULL;
+	memset(&sp->vsz, 0, sizeof(*sp) - offsetof(procps_status_t, vsz));
+
+	sp->pid = (uintptr_t)pi->UniqueProcessId;
+	sp->ppid = (uintptr_t)pi->InheritedFromUniqueProcessId;
+	sp->sid = pi->SessionId;
+	sp->uid = getuid();
+	sp->gid = getgid();
+	sp->state[0] = '?';
+	sp->state[1] = ' ';
+	sp->state[2] = ' ';
+	sp->vsz = (unsigned long)(pi->VirtualMemoryCounters.VirtualSize >> 10);
+	sp->rss = (unsigned long)(pi->VirtualMemoryCounters.WorkingSetSize >> 10);
+
+	ticks_per_second = bb_clk_tck();
+	ticks_divisor = 10000000ULL / ticks_per_second;
+	if (!ticks_divisor)
+		ticks_divisor = 1;
+	sp->utime = (unsigned long)(pi->UserTime.QuadPart / ticks_divisor);
+	sp->stime = (unsigned long)(pi->KernelTime.QuadPart / ticks_divisor);
+	{
+		FILETIME now_ft;
+		ULARGE_INTEGER now;
+		unsigned long long age_ms;
+		unsigned long long uptime_ms = GetTickCount64();
+
+		GetSystemTimeAsFileTime(&now_ft);
+		now.LowPart = now_ft.dwLowDateTime;
+		now.HighPart = now_ft.dwHighDateTime;
+		age_ms = now.QuadPart > (unsigned long long)pi->CreateTime.QuadPart
+			? (now.QuadPart - pi->CreateTime.QuadPart) / 10000
+			: 0;
+		if (age_ms < uptime_ms)
+			sp->start_time = (unsigned long)(
+				(uptime_ms - age_ms) * ticks_per_second / 1000
+			);
+	}
+# if ENABLE_FEATURE_PS_ADDITIONAL_COLUMNS
+	sp->niceness = 0;
+	sp->ruid = sp->uid;
+	sp->rgid = sp->gid;
+# endif
+
+	if (pi->ImageName.Buffer && pi->ImageName.Length) {
+		name = win_wide_to_utf8(pi->ImageName.Buffer,
+				pi->ImageName.Length / sizeof(WCHAR));
+		safe_strncpy(sp->comm, name ? name : "?", sizeof(sp->comm));
+		free(name);
+	} else if (sp->pid == 0) {
+		safe_strncpy(sp->comm, "System Idle Process", sizeof(sp->comm));
+	} else if (sp->pid == 4) {
+		safe_strncpy(sp->comm, "System", sizeof(sp->comm));
+	} else {
+		snprintf(sp->comm, sizeof(sp->comm), "[pid %u]", sp->pid);
+	}
+	win_process_user(sp->pid, sp->win_user, sizeof(sp->win_user));
+
+	if (flags & PSSCAN_EXE)
+		sp->exe = win_process_image_path(sp->pid);
+	if (flags & (PSSCAN_ARGV0 | PSSCAN_ARGVN)) {
+		sp->argv0 = win_process_command_line(sp->pid);
+		if (!sp->argv0)
+			sp->argv0 = xstrdup(sp->exe ? sp->exe : sp->comm);
+		if (flags & PSSCAN_ARGVN)
+			sp->argv_len = strlen(sp->argv0) + 1;
+		else
+			win_keep_first_argument(sp->argv0);
+	}
+
+	return sp;
+}
+#endif
+
 
 typedef struct id_to_name_map_t {
 	uid_t id;
@@ -91,16 +380,24 @@ static procps_status_t* FAST_FUNC alloc_procps_scan(void)
 		sp->shift_pages_to_bytes++;
 	}
 	sp->shift_pages_to_kb = sp->shift_pages_to_bytes - 10;
+#if defined(__CYGWIN__)
+	sp->win_proc_buf = win_process_snapshot();
+#else
 	sp->dir = xopendir("/proc");
+#endif
 	return sp;
 }
 
 void FAST_FUNC free_procps_scan(procps_status_t* sp)
 {
+#if defined(__CYGWIN__)
+	free(sp->win_proc_buf);
+#else
 	closedir(sp->dir);
 #if ENABLE_FEATURE_SHOW_THREADS
 	if (sp->task_dir)
 		closedir(sp->task_dir);
+#endif
 #endif
 	free(sp->argv0);
 	free(sp->exe);
@@ -269,6 +566,9 @@ if (memcmp(buf+4, S, sizeof(S)-1) == 0) { \
 
 procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags)
 {
+#if defined(__CYGWIN__)
+	return procps_scan_windows(sp, flags);
+#else
 	if (!sp)
 		sp = alloc_procps_scan();
 
@@ -553,12 +853,72 @@ procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags)
 	} /* for (;;) */
 
 	return sp;
+#endif
+}
+
+int FAST_FUNC bb_process_kill(pid_t pid, int signo)
+{
+#if defined(__CYGWIN__)
+	HANDLE process;
+	DWORD access;
+
+	/* Preserve real POSIX signal semantics for Cygwin/MSYS processes. */
+	if (kill(pid, signo) == 0)
+		return 0;
+	if (pid <= 0 || errno != ESRCH)
+		return -1;
+
+	if (signo == 0) {
+		access = PROCESS_QUERY_LIMITED_INFORMATION;
+	} else {
+		if (signo != SIGTERM && signo != SIGKILL
+		 && signo != SIGINT && signo != SIGHUP && signo != SIGQUIT
+		) {
+			errno = ENOTSUP;
+			return -1;
+		}
+		access = PROCESS_TERMINATE;
+	}
+
+	process = OpenProcess(access, FALSE, (DWORD)pid);
+	if (!process) {
+		errno = (GetLastError() == ERROR_INVALID_PARAMETER) ? ESRCH : EACCES;
+		return -1;
+	}
+	if (signo != 0 && !TerminateProcess(process, 128 + signo)) {
+		CloseHandle(process);
+		errno = EACCES;
+		return -1;
+	}
+	CloseHandle(process);
+	return 0;
+#else
+	return kill(pid, signo);
+#endif
 }
 
 int FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
 {
 	int sz;
 	char filename[sizeof("/proc/%u/cmdline") + sizeof(int)*3];
+
+#if defined(__CYGWIN__)
+	char *cmdline = win_process_command_line(pid);
+
+	if (!cmdline)
+		cmdline = win_process_image_path(pid);
+	if (!cmdline) {
+		snprintf(buf, col, "[%s]", comm ? comm : "?");
+		return 0;
+	}
+	safe_strncpy(buf, cmdline, col);
+	free(cmdline);
+	for (sz = 0; buf[sz]; sz++) {
+		if ((unsigned char)buf[sz] < ' ')
+			buf[sz] = '?';
+	}
+	return 0;
+#endif
 
 	sprintf(filename, "/proc/%u/cmdline", pid);
 	sz = open_read_close(filename, buf, col - 1);

@@ -392,6 +392,15 @@ typedef unsigned smalluint;
 
 #if defined(__CYGWIN__)
 # define MAXSYMLINKS SYMLOOP_MAX
+/*
+ * Newer Cygwin/newlib headers declare non-standard three-argument itoa()
+ * and utoa().  BusyBox has one-argument helpers with the same names.
+ * Include their declarations before defining the renames so that only the
+ * BusyBox helpers and their subsequent uses receive the new names.
+ */
+# include <stdlib.h>
+# define itoa bb_itoa
+# define utoa bb_utoa
 #endif
 
 #if defined(ANDROID) || defined(__ANDROID__)

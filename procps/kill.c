@@ -217,7 +217,7 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 		sid = getsid(pid);
 		/* Stop all processes */
 		if (signo != SIGSTOP && signo != SIGCONT)
-			kill(-1, SIGSTOP);
+			bb_process_kill(-1, SIGSTOP);
 		/* Signal all processes except those in our session */
 		while ((p = procps_scan(p, PSSCAN_PID|PSSCAN_SID)) != NULL) {
 			char **args;
@@ -254,14 +254,14 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 				if (p->pid == omit)
 					goto dont_kill;
 			}
-			kill(p->pid, signo);
+			bb_process_kill(p->pid, signo);
 			errors = 0;
  dont_kill: ;
 		}
  resume:
 		/* And let them continue */
 		if (signo != SIGSTOP && signo != SIGCONT)
-			kill(-1, SIGCONT);
+			bb_process_kill(-1, SIGCONT);
 		return errors;
 	}
 
@@ -288,7 +288,7 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 				for (pl = pidList; *pl; pl++) {
 					if (*pl == pid)
 						continue;
-					if (kill(*pl, signo) == 0)
+					if (bb_process_kill(*pl, signo) == 0)
 						continue;
 					errors++;
 					if (!quiet)
@@ -321,7 +321,7 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 				errors++;
 				break;
 			}
-			if (kill(pid, signo) != 0) {
+			if (bb_process_kill(pid, signo) != 0) {
 				bb_perror_msg("can't kill pid %d", (int)pid);
 				errors++;
 			}
@@ -332,7 +332,7 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 		if (errno) {
 			bb_error_msg("invalid number '%s'", arg);
 			errors++;
-		} else if (kill(pid, signo) != 0) {
+		} else if (bb_process_kill(pid, signo) != 0) {
 			bb_perror_msg("can't kill pid %d", (int)pid);
 			errors++;
 		}

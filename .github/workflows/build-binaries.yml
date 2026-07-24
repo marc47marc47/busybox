@@ -1,0 +1,105 @@
+name: Build BusyBox binaries
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x86_64
+            cc: gcc
+            packages: gcc
+          - name: i686
+            cc: gcc
+            packages: gcc-multilib
+          - name: arm64
+            cc: aarch64-linux-gnu-gcc
+            packages: gcc-aarch64-linux-gnu
+          - name: armv7
+            cc: arm-linux-gnueabihf-gcc
+            packages: gcc-arm-linux-gnueabihf
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y make perl ${{ matrix.packages }}
+      - name: Configure and build
+        env:
+          CROSS_CC: ${{ matrix.cc }}
+        run: |
+          set -euo pipefail
+          if [ "${CROSS_CC}" = gcc ] && [ "${{ matrix.name }}" = i686 ]; then
+            export CFLAGS='-m32'
+          fi
+          make defconfig
+          "${CROSS_CC}" --version
+          make -j"$(nproc)" CC="${CROSS_CC}"
+          file busybox
+          mkdir -p artifact
+          cp busybox "artifact/busybox-linux-${{ matrix.name }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: busybox-linux-${{ matrix.name }}
+          path: artifact/busybox-linux-${{ matrix.name }}
+
+  macos:
+    name: macOS ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x86_64
+            runner: macos-13
+          - name: arm64
+            runner: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          set -euo pipefail
+          make defconfig
+          make -j"$(sysctl -n hw.ncpu)"
+          file busybox
+          mkdir -p artifact
+          cp busybox "artifact/busybox-macos-${{ matrix.name }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: busybox-macos-${{ matrix.name }}
+          path: artifact/busybox-macos-${{ matrix.name }}
+
+  windows:
+    name: Windows x86_64 (MSYS2)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          update: true
+          install: >-
+            make
+            gcc
+            binutils
+            diffutils
+            perl
+      - name: Build
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          ./build.sh --reconfigure --jobs "$(nproc)"
+          file busybox.exe
+          mkdir -p artifact
+          cp busybox.exe artifact/busybox-windows-x86_64.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: busybox-windows-x86_64
+          path: artifact/busybox-windows-x86_64.exe

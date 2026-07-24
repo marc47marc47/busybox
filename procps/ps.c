@@ -210,6 +210,12 @@ struct globals {
 
 static void func_user(char *buf, int size, const procps_status_t *ps)
 {
+#if defined(__CYGWIN__)
+	if (ps->win_user[0]) {
+		safe_strncpy(buf, ps->win_user, size+1);
+		return;
+	}
+#endif
 #if 1
 	safe_strncpy(buf, get_cached_username(ps->uid), size+1);
 #else
@@ -784,7 +790,12 @@ int ps_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 			} else
 #endif
 			{
+#if defined(__CYGWIN__)
+				const char *user = p->win_user[0]
+					? p->win_user : get_cached_username(p->uid);
+#else
 				const char *user = get_cached_username(p->uid);
+#endif
 				len = printf("%5u %-8.8s %s %s  ",
 					p->pid, user, buf6, p->state);
 			}
