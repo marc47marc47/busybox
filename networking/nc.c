@@ -147,6 +147,9 @@ int nc_main(int argc, char **argv)
 			else if (ENABLE_NC_EXTRA && opt == 'f')
 				IF_NC_EXTRA( cfd = xopen(optarg, O_RDWR));
 			else if (ENABLE_NC_EXTRA && opt == 'e' && optind <= argc) {
+				#if defined(_WIN32) && !defined(__CYGWIN__)
+				bb_error_msg_and_die("-e is unavailable on native Windows (external programs are disabled)");
+				#else
 				/* We cannot just 'break'. We should let getopt finish.
 				** Or else we won't be able to find where
 				** 'host' and 'port' params are
@@ -161,6 +164,7 @@ int nc_main(int argc, char **argv)
 						*p++ = argv[optind++];
 					}
 				)
+				#endif
 				/* optind points to argv[argc] (NULL) now.
 				** FIXME: we assume that getopt will not count options
 				** possibly present on "-e PROG ARGS" and will not

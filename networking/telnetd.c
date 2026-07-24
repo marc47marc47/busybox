@@ -964,6 +964,12 @@ static void make_new_session(ioloop_state_t *io, int sockrd)
 	 * for vforked child to exec!) */
 	print_login_issue(G.issuefile, tty_name);
 
+	/* Native Windows builds do not launch a login executable.  A future
+	 * ConPTY backend can provide an in-process shell policy explicitly. */
+#if defined(_WIN32) && !defined(__CYGWIN__)
+	bb_error_msg("telnetd login programs are unavailable on native Windows");
+	_exit_FAILURE();
+#else
 	/* Exec shell / login / whatever */
 	login_argv[0] = G.loginpath;
 	login_argv[1] = NULL;
@@ -976,6 +982,7 @@ static void make_new_session(ioloop_state_t *io, int sockrd)
 	/* _exit is safer with vfork, and we shouldn't send message
 	 * to remote clients anyway */
 	_exit_FAILURE(); /*bb_perror_msg_and_die("execv %s", G.loginpath);*/
+#endif
 }
 
 
