@@ -103,6 +103,36 @@ jobs:
           file busybox.exe
           mkdir -p artifact
           cp busybox.exe artifact/busybox-windows-x86_64.exe
+      - name: Windows networking smoke tests
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          server=''
+          ncserver=''
+          cleanup() {
+            test -z "$server" || kill "$server" 2>/dev/null || true
+            test -z "$ncserver" || kill "$ncserver" 2>/dev/null || true
+            rm -rf "$tmp"
+          }
+          trap cleanup EXIT
+          printf 'busybox-windows-smoke\n' > "$tmp/index.html"
+          ./busybox.exe httpd -f -p 127.0.0.1:18080 -h "$tmp" >"$tmp/httpd.log" 2>&1 &
+          server=$!
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            ./busybox.exe wget -q -O "$tmp/out" http://127.0.0.1:18080/index.html && break
+            sleep 1
+          done
+          cmp "$tmp/index.html" "$tmp/out"
+          ./busybox.exe nc -l -p 18081 127.0.0.1 >"$tmp/nc.out" 2>"$tmp/nc.log" &
+          ncserver=$!
+          sleep 1
+          printf 'busybox-nc-smoke\n' | ./busybox.exe nc 127.0.0.1 18081
+          for _ in 1 2 3 4 5; do
+            grep -q 'busybox-nc-smoke' "$tmp/nc.out" && break
+            sleep 1
+          done
+          grep -q 'busybox-nc-smoke' "$tmp/nc.out"
       - uses: actions/upload-artifact@v4
         with:
           name: busybox-windows-x86_64
