@@ -106,7 +106,7 @@ if ((reconfigure)) || [[ ! -f .config ]]; then
 		SHA1_HWACCEL SHA256_HWACCEL \
 		I2CGET I2CSET I2CDUMP I2CDETECT I2CTRANSFER \
 		PARTPROBE SEEDRNG BLKDISCARD MKE2FS FSTRIM FSFREEZE MKDOSFS \
-		SWAPON SWAPOFF UNSHARE UBIRENAME UEVENT TC UDHCPC6 \
+		SWAPON SWAPOFF UNSHARE UBIRENAME UEVENT UDHCPC6 \
 		IPNEIGH FEATURE_IP_NEIGH
 	do
 		sed -i \
@@ -124,7 +124,11 @@ if ((reconfigure)) || [[ ! -f .config ]]; then
 fi
 
 echo "Building BusyBox with $jobs parallel jobs..."
-make -j"$jobs"
+if [[ $(uname -s) == CYGWIN* || $(uname -s) == MSYS* || $(uname -s) == MINGW* ]]; then
+	make -j"$jobs" TC_WINDOWS=y
+else
+	make -j"$jobs"
+fi
 
 if [[ ! -x busybox ]]; then
 	echo "build.sh: build completed but no BusyBox executable was found" >&2

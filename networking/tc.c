@@ -42,6 +42,28 @@
 //usage:	"	[[FILTER_TYPE] [help|OPTIONS]]\n"
 //usage:	"filter show [dev STRING] [root|parent CLASSID]"
 
+#if defined(__CYGWIN__)
+
+#include "libbb.h"
+
+/*
+ * Windows does not expose Linux's rtnetlink/qdisc ABI.  Keep the applet
+ * present in Windows builds so callers get a useful diagnostic instead of
+ * "applet not found"; the native WinDivert backend will replace this shim
+ * when the driver is packaged with the Windows distribution.
+ */
+int tc_main(int argc UNUSED_PARAM, char **argv)
+{
+	if (argc > 1 && argv[1] && strcmp(argv[1], "show") == 0) {
+		bb_error_msg("Windows tc backend requires the WinDivert driver");
+		return EXIT_FAILURE;
+	}
+	bb_error_msg("tc traffic control is not available without WinDivert on Windows");
+	return EXIT_FAILURE;
+}
+
+#else
+
 #include "libbb.h"
 #include "common_bufsiz.h"
 
@@ -626,3 +648,5 @@ int tc_main(int argc UNUSED_PARAM, char **argv)
 	}
 	return EXIT_SUCCESS;
 }
+
+#endif /* __CYGWIN__ */
