@@ -134,8 +134,13 @@ int touch_main(int argc UNUSED_PARAM, char **argv)
 		xstat(reference_file, &stbuf);
 		timebuf[0].tv_sec = stbuf.st_atime;
 		timebuf[1].tv_sec = stbuf.st_mtime;
+# if defined(__APPLE__)
+		timebuf[0].tv_nsec = stbuf.st_atimespec.tv_nsec;
+		timebuf[1].tv_nsec = stbuf.st_mtimespec.tv_nsec;
+# else
 		timebuf[0].tv_nsec = stbuf.st_atim.tv_nsec;
 		timebuf[1].tv_nsec = stbuf.st_mtim.tv_nsec;
+# endif
 	}
 	if (opts & (OPT_d|OPT_t)) {
 		struct tm tm_time;

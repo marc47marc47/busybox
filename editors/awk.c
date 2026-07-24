@@ -2666,7 +2666,8 @@ static char *awk_printf(node *n, size_t *len)
 		if (slen != 0 || res_len == 0) {
 //bb_error_msg("appending:'%.*s'", slen, s);
 			res_buf = xrealloc(res_buf, res_len + slen + 1);
-			((char*)mempcpy(res_buf + res_len, s, slen))[0] = '\0';
+			memcpy(res_buf + res_len, s, slen);
+			res_buf[res_len + slen] = '\0';
 			res_len += slen;
 		}
 		if (!c) /* s is NOT allocated and this is the last part of string? */
