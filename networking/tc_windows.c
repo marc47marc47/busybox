@@ -6,6 +6,8 @@
 
 typedef HANDLE (WINAPI *windivert_open_fn)(const char *, int, int, UINT64);
 typedef BOOL (WINAPI *windivert_close_fn)(HANDLE);
+typedef BOOL (WINAPI *windivert_recv_fn)(HANDLE, PVOID, UINT, UINT *, PVOID);
+typedef BOOL (WINAPI *windivert_send_fn)(HANDLE, PVOID, UINT, UINT *, PVOID);
 
 struct win_tc_state {
 	char dev[128];
@@ -15,6 +17,8 @@ struct win_tc_state {
 	unsigned delay_ms;
 	unsigned loss_ppm;
 };
+
+static int win_tc_load(struct win_tc_state *state, const char *dev);
 
 static int win_tc_load_driver(void)
 {
@@ -41,6 +45,85 @@ static int win_tc_load_driver(void)
 	close_fn(handle);
 	FreeLibrary(dll);
 	return 1;
+}
+
+static int win_tc_worker(const char *dev)
+{
+	HMODULE dll;
+	windivert_open_fn open_fn;
+	windivert_close_fn close_fn;
+	windivert_recv_fn recv_fn;
+	windivert_send_fn send_fn;
+	struct win_tc_state state;
+	HANDLE handle;
+	unsigned char packet[65536];
+	unsigned char address[64];
+	UINT packet_len, written;
+	unsigned long long last_tick = GetTickCount64();
+	unsigned long long tokens = 0;
+
+	if (win_tc_load(&state, dev) != 0)
+		return EXIT_FAILURE;
+	dll = LoadLibraryA("WinDivert.dll");
+	if (!dll)
+		return EXIT_FAILURE;
+	open_fn = (windivert_open_fn)GetProcAddress(dll, "WinDivertOpen");
+	close_fn = (windivert_close_fn)GetProcAddress(dll, "WinDivertClose");
+	recv_fn = (windivert_recv_fn)GetProcAddress(dll, "WinDivertRecv");
+	send_fn = (windivert_send_fn)GetProcAddress(dll, "WinDivertSend");
+	if (!open_fn || !close_fn || !recv_fn || !send_fn)
+		return FreeLibrary(dll), EXIT_FAILURE;
+	handle = open_fn("outbound and !impostor", 0, 0, 0);
+	if (!handle || handle == INVALID_HANDLE_VALUE)
+		return FreeLibrary(dll), EXIT_FAILURE;
+
+	srand((unsigned)GetTickCount64());
+	for (;;) {
+		unsigned long long now;
+		unsigned long long elapsed;
+		if (!recv_fn(handle, packet, sizeof(packet), &packet_len, address))
+			break;
+		if (state.loss_ppm && (unsigned)(rand() % 1000000) < state.loss_ppm)
+			continue;
+		if (state.delay_ms)
+			Sleep(state.delay_ms);
+		if (state.rate) {
+			now = GetTickCount64();
+			elapsed = now - last_tick;
+			last_tick = now;
+			tokens += state.rate * elapsed / 1000;
+			if (tokens > state.rate)
+				tokens = state.rate;
+			while (tokens < (unsigned long long)packet_len * 8)
+				Sleep(1), tokens += state.rate / 1000;
+			tokens -= (unsigned long long)packet_len * 8;
+		}
+		if (!send_fn(handle, packet, packet_len, &written, address))
+			break;
+	}
+	close_fn(handle);
+	FreeLibrary(dll);
+	return EXIT_FAILURE;
+}
+
+static int win_tc_start_worker(const char *dev)
+{
+	char exe[MAX_PATH], command[2 * MAX_PATH];
+	STARTUPINFOA startup = { .cb = sizeof(startup) };
+	PROCESS_INFORMATION process;
+	DWORD length;
+
+	length = GetModuleFileNameA(NULL, exe, sizeof(exe));
+	if (!length || length >= sizeof(exe))
+		return -1;
+	snprintf(command, sizeof(command), "\"%s\" tc --win-worker %s", exe, dev);
+	if (!CreateProcessA(NULL, command, NULL, NULL, FALSE,
+			CREATE_NO_WINDOW | DETACHED_PROCESS, NULL, NULL,
+			&startup, &process))
+		return -1;
+	CloseHandle(process.hThread);
+	CloseHandle(process.hProcess);
+	return 0;
 }
 
 static void win_tc_state_path(char *path, size_t size, const char *dev)
@@ -125,6 +208,8 @@ int tc_windows_main(int argc, char **argv)
 	const char *object, *command = "show", *dev = NULL;
 	int i;
 
+	if (argc >= 3 && strcmp(argv[1], "--win-worker") == 0)
+		return win_tc_worker(argv[2]);
 	if (argc < 2)
 		bb_show_usage();
 	object = argv[1];
@@ -185,5 +270,7 @@ int tc_windows_main(int argc, char **argv)
 		bb_error_msg_and_die("missing qdisc kind");
 	if (win_tc_save(&state) != 0)
 		bb_perror_msg_and_die("cannot save qdisc state");
+	if (win_tc_start_worker(dev) != 0)
+		bb_perror_msg_and_die("cannot start Windows tc worker");
 	return 0;
 }
