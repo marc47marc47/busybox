@@ -86,6 +86,10 @@ jobs:
         run: |
           set -euo pipefail
           make freebsd_defconfig
+          # These applets depend on Linux-only kernel capability and xattr APIs.
+          for option in FEATURE_SETPRIV_CAPABILITIES RUN_INIT GETFATTR; do
+            sed -i "s/^CONFIG_${option}=y$/# CONFIG_${option} is not set/" .config
+          done
           make -j"$(sysctl -n hw.ncpu)" AR=llvm-ar RANLIB=llvm-ranlib EXTRA_ARFLAGS=
           file busybox
           mkdir -p artifact
