@@ -33,7 +33,7 @@ int FAST_FUNC INET_resolve(const char *name, struct sockaddr_in *s_in, int hostf
 		return 1;
 	}
 	/* Look to see if it's a dotted quad. */
-	if (inet_aton(name, &s_in->sin_addr)) {
+	if (inet_pton(AF_INET, name, &s_in->sin_addr) == 1) {
 		return 0;
 	}
 	/* If we expect this to be a hostname, try hostname database first */
