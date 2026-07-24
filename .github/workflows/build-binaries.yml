@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           make defconfig
-          make -j"$(sysctl -n hw.ncpu)" AR=llvm-ar RANLIB=llvm-ranlib
+          make -j"$(sysctl -n hw.ncpu)" AR=llvm-ar RANLIB=llvm-ranlib EXTRA_ARFLAGS=
           file busybox
           mkdir -p artifact
           cp busybox "artifact/busybox-macos-${{ matrix.name }}"
