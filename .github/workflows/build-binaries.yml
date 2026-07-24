@@ -92,7 +92,7 @@ jobs:
               UBIATTACH UBIDETACH UBIMKVOL UBIRMVOL UBIRSVOL UBIUPDATEVOL \
               UBIRENAME UEVENT IPNEIGH TC BLKDISCARD FSFREEZE FSTRIM \
               SETPRIV UDHCPC6 CHRT FALLOCATE SWAPON SWAPOFF UNSHARE \
-              NSENTER BOOTCHARTD LSBLK MKE2FS MKDOSFS; do
+              NSENTER BOOTCHARTD LSBLK MKE2FS MKDOSFS LINUX32 LINUX64; do
             sed -i '' "s/^CONFIG_${option}=y$/# CONFIG_${option} is not set/" .config
           done
           make -j"$(sysctl -n hw.ncpu)" AR=llvm-ar RANLIB=llvm-ranlib EXTRA_ARFLAGS=
