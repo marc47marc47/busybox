@@ -87,7 +87,8 @@ jobs:
           set -euo pipefail
           make freebsd_defconfig
           # These applets depend on Linux-only kernel capability and xattr APIs.
-          for option in FEATURE_SETPRIV_CAPABILITIES RUN_INIT GETFATTR; do
+          for option in FEATURE_SETPRIV_CAPABILITIES RUN_INIT GETFATTR \
+              I2CGET I2CSET I2CDUMP I2CDETECT I2CTRANSFER; do
             sed -i '' "s/^CONFIG_${option}=y$/# CONFIG_${option} is not set/" .config
           done
           make -j"$(sysctl -n hw.ncpu)" AR=llvm-ar RANLIB=llvm-ranlib EXTRA_ARFLAGS=

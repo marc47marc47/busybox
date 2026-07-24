@@ -51,7 +51,8 @@ char* FAST_FUNC concat_path_file(const char *path, const char *filename)
 	n3 = strlen(filename) + 1;
 
 	buf = xmalloc(n1 + n2 + n3);
-	p = mempcpy(buf, path, n1);
+	memcpy(buf, path, n1);
+	p = buf + n1;
 	if (n2)
 		*p++ = '/';
 	memcpy(p, filename, n3);
