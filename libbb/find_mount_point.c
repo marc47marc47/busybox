@@ -7,6 +7,14 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 #include "libbb.h"
+#if defined(__APPLE__)
+struct mntent;
+
+struct mntent* FAST_FUNC find_mount_point(const char *name UNUSED_PARAM, int subdir_too UNUSED_PARAM)
+{
+	return NULL;
+}
+#else
 #include <mntent.h>
 
 /*
@@ -77,3 +85,4 @@ struct mntent* FAST_FUNC find_mount_point(const char *name, int subdir_too)
 
 	return mountEntry;
 }
+#endif
