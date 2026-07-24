@@ -690,7 +690,10 @@ static void standout_end(void)
 static char *begin_line(char *p) // return pointer to first char cur line
 {
 	if (p > text) {
-		p = memrchr(text, '\n', p - text);
+		char *q = p;
+		while (q != text && q[-1] != '\n')
+			q--;
+		p = q == text ? NULL : q - 1;
 		if (!p)
 			return text;
 		return p + 1;

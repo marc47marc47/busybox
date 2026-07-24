@@ -11,6 +11,10 @@
 
 unsigned long* FAST_FUNC get_malloc_cpu_affinity(int pid, unsigned *sz)
 {
+#if !defined(__linux__)
+	/* CPU affinity is a Linux-specific facility. */
+	return xzalloc(*sz);
+#else
 	unsigned long *mask = NULL;
 	unsigned sz_in_bytes = *sz;
 
@@ -26,4 +30,5 @@ unsigned long* FAST_FUNC get_malloc_cpu_affinity(int pid, unsigned *sz)
 	//bb_error_msg("get mask[0]:%lx sz_in_bytes:%d", mask[0], sz_in_bytes);
 	*sz = sz_in_bytes;
 	return mask;
+#endif
 }
