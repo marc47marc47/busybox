@@ -91,7 +91,7 @@ jobs:
               PARTPROBE FEATURE_USE_SENDFILE SEEDRNG SETFATTR SETSERIAL \
               UBIATTACH UBIDETACH UBIMKVOL UBIRMVOL UBIRSVOL UBIUPDATEVOL \
               UBIRENAME UEVENT IPNEIGH TC BLKDISCARD FSFREEZE FSTRIM \
-              SETPRIV UDHCPC6; do
+              SETPRIV UDHCPC6 CHRT; do
             sed -i '' "s/^CONFIG_${option}=y$/# CONFIG_${option} is not set/" .config
           done
           make -j"$(sysctl -n hw.ncpu)" AR=llvm-ar RANLIB=llvm-ranlib EXTRA_ARFLAGS=
