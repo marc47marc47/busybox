@@ -70,7 +70,7 @@ jobs:
       - name: Build
         run: |
           set -euo pipefail
-          make defconfig
+          make freebsd_defconfig
           make -j"$(sysctl -n hw.ncpu)" AR=llvm-ar RANLIB=llvm-ranlib EXTRA_ARFLAGS=
           file busybox
           mkdir -p artifact
