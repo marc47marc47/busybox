@@ -42,7 +42,12 @@ int FAST_FUNC check_got_signal_and_poll(struct pollfd pfd[1], int timeout)
 		errno = EINTR; /* inform the caller that we got a signal */
 		return -1;
 	}
+#if defined(__APPLE__)
+	/* macOS has no ppoll; retain the timed poll behavior without sigmask. */
+	n = poll(pfd, 1, timeout);
+#else
 	n = ppoll(pfd, 1, timeout >= 0 ? &tv : NULL, &orig_mask);
+#endif
 	sigprocmask2(SIG_SETMASK, &orig_mask);
 	return n;
 }
