@@ -592,7 +592,13 @@ static void check_suid(int applet_no)
 		if (sct->m_mode & S_ISGID)
 			rgid = sct->m_ugid.gid;
 		/* else: we will set egid = rgid, thus dropping sgid effect */
-		if (setresgid(-1, rgid, rgid))
+		if (
+#if defined(__APPLE__)
+			setregid(-1, rgid)
+#else
+			setresgid(-1, rgid, rgid)
+#endif
+		)
 			bb_simple_perror_msg_and_die("setresgid");
 
 		/* Are we directed to change uid
@@ -602,7 +608,13 @@ static void check_suid(int applet_no)
 		if (sct->m_mode & S_ISUID)
 			uid = sct->m_ugid.uid;
 		/* else: we will set euid = ruid, thus dropping suid effect */
-		if (setresuid(-1, uid, uid))
+		if (
+#if defined(__APPLE__)
+			setreuid(-1, uid)
+#else
+			setresuid(-1, uid, uid)
+#endif
+		)
 			bb_simple_perror_msg_and_die("setresuid");
 
 		goto ret;
