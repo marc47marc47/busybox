@@ -9,6 +9,9 @@
  */
 #include "libbb.h"
 #include "inet_common.h"
+#if defined(__APPLE__)
+# include <arpa/inet.h>
+#endif
 
 #if 0
 # define dbg(...) bb_error_msg(__VA_ARGS__)
