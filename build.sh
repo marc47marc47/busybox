@@ -116,6 +116,12 @@ if ((reconfigure)) || [[ ! -f .config ]]; then
 
 	# The checked-in defconfig can predate newly added options.  Accept each
 	# new option's Kconfig default without requiring an interactive terminal.
+	# BusyBox's Kconfig parser requires blank lines inside help blocks to retain
+	# indentation.  This matters on the native Windows/MSYS host build, where
+	# otherwise the continuation paragraphs are reported as unknown options.
+	while IFS= read -r -d '' config_in; do
+		sed -i 's/^$/\t/' "$config_in"
+	done < <(find . -name Config.in -print0)
 	set +o pipefail
 	yes "" | make oldconfig >/dev/null
 	config_status=${PIPESTATUS[1]}

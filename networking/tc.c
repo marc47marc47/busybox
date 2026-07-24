@@ -253,6 +253,7 @@ static int cbq_parse_opt(int argc, char **argv, struct nlmsghdr *n)
 #endif
 static int cbq_print_opt(struct rtattr *opt)
 {
+#if defined(TCA_CBQ_MAX)
 	struct rtattr *tb[TCA_CBQ_MAX+1];
 	struct tc_ratespec *r = NULL;
 	struct tc_cbq_lssopt *lss = NULL;
@@ -339,6 +340,11 @@ static int cbq_print_opt(struct rtattr *opt)
 				printf("allot %ub ", wrr->allot);
 		}
 	}
+#else
+	/* CBQ was removed from recent Linux UAPI headers. */
+	if (opt)
+		printf("(CBQ options unavailable)");
+#endif
  done:
 	return 0;
 }
