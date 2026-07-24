@@ -51,9 +51,12 @@ jobs:
           fi
           export LD="${CROSS_LD}"
           export STRIP="${CROSS_STRIP}"
+          if [ "${{ matrix.name }}" = i686 ]; then
+            export LDFLAGS='-m32'
+          fi
           make defconfig
           "${CROSS_CC}" --version
-          make -j"$(nproc)" CC="${CROSS_CC}"
+          make -j"$(nproc)" CC="${CROSS_CC}" LD="${CROSS_LD}" STRIP="${CROSS_STRIP}"
           file busybox
           mkdir -p artifact
           cp busybox "artifact/busybox-linux-${{ matrix.name }}"

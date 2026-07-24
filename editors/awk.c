@@ -2105,7 +2105,8 @@ static int awk_split(const char *s, node *spl, char **slist)
 				if (s[l])
 					pmatch[0].rm_eo++;
 			}
-			s1 = mempcpy(s1, s, l);
+			memcpy(s1, s, l);
+			s1 += l;
 			*s1++ = '\0';
 			s += pmatch[0].rm_eo;
 		} while (*s);

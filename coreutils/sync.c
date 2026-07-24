@@ -68,7 +68,12 @@ static int sync_common(int opts, char **argv)
 			 * syncfs is documented to only fail with EBADF,
 			 * which can't happen here. So, no error checks.
 			 */
+			/* syncfs is Linux-specific; fsync is the closest portable fallback. */
+# if defined(__linux__)
 			syncfs(fd);
+# else
+			fsync(fd);
+# endif
 		} else
 # endif
 		if (((opts & OPT_DATASYNC) ? fdatasync(fd) : fsync(fd)) != 0) {
