@@ -17,15 +17,23 @@ jobs:
         include:
           - name: x86_64
             cc: gcc
+            ld: gcc
+            strip: strip
             packages: gcc
           - name: i686
             cc: gcc
+            ld: gcc
+            strip: strip
             packages: gcc-multilib
           - name: arm64
             cc: aarch64-linux-gnu-gcc
+            ld: aarch64-linux-gnu-gcc
+            strip: aarch64-linux-gnu-strip
             packages: gcc-aarch64-linux-gnu
           - name: armv7
             cc: arm-linux-gnueabihf-gcc
+            ld: arm-linux-gnueabihf-gcc
+            strip: arm-linux-gnueabihf-strip
             packages: gcc-arm-linux-gnueabihf
     steps:
       - uses: actions/checkout@v4
@@ -34,11 +42,15 @@ jobs:
       - name: Configure and build
         env:
           CROSS_CC: ${{ matrix.cc }}
+          CROSS_LD: ${{ matrix.ld }}
+          CROSS_STRIP: ${{ matrix.strip }}
         run: |
           set -euo pipefail
           if [ "${CROSS_CC}" = gcc ] && [ "${{ matrix.name }}" = i686 ]; then
             export CFLAGS='-m32'
           fi
+          export LD="${CROSS_LD}"
+          export STRIP="${CROSS_STRIP}"
           make defconfig
           "${CROSS_CC}" --version
           make -j"$(nproc)" CC="${CROSS_CC}"
