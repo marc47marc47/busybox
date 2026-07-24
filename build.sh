@@ -114,10 +114,10 @@ if ((reconfigure)) || [[ ! -f .config ]]; then
 			.config
 	done
 
-	# The checked-in defconfig can predate newly added options.  Disable new
-	# options unless they are explicitly enabled by the Windows defconfig.
+	# The checked-in defconfig can predate newly added options.  Accept each
+	# new option's Kconfig default without requiring an interactive terminal.
 	set +o pipefail
-	yes n | make oldconfig >/dev/null
+	yes "" | make oldconfig >/dev/null
 	config_status=${PIPESTATUS[1]}
 	set -o pipefail
 	((config_status == 0)) || exit "$config_status"

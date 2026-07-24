@@ -63,11 +63,15 @@ jobs:
             runner: macos-14
     steps:
       - uses: actions/checkout@v4
+      - name: Select LLVM binutils
+        run: |
+          brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
       - name: Build
         run: |
           set -euo pipefail
           make defconfig
-          make -j"$(sysctl -n hw.ncpu)"
+          make -j"$(sysctl -n hw.ncpu)" AR=llvm-ar RANLIB=llvm-ranlib
           file busybox
           mkdir -p artifact
           cp busybox "artifact/busybox-macos-${{ matrix.name }}"
