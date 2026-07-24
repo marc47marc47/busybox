@@ -96,7 +96,7 @@ jobs:
               STATIC_LIBGCC; do
             sed -i '' "s/^CONFIG_${option}=y$/# CONFIG_${option} is not set/" .config
           done
-          make -j"$(sysctl -n hw.ncpu)" AR=llvm-ar RANLIB=llvm-ranlib EXTRA_ARFLAGS=
+          make -j"$(sysctl -n hw.ncpu)" AR=llvm-ar RANLIB=llvm-ranlib STRIP=llvm-strip EXTRA_ARFLAGS=
           file busybox
           mkdir -p artifact
           cp busybox "artifact/busybox-macos-${{ matrix.name }}"
