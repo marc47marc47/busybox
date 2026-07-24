@@ -119,14 +119,20 @@ jobs:
             binutils
             diffutils
             perl
+            zip
       - name: Build
         shell: msys2 {0}
         run: |
           set -euo pipefail
           ./build.sh --reconfigure --jobs "$(nproc)"
           file busybox.exe
-          mkdir -p artifact
-          cp busybox.exe artifact/busybox-windows-x86_64.exe
+          mkdir -p artifact/bundle
+          cp busybox.exe artifact/bundle/busybox.exe
+          # busybox.exe is built against MSYS2's POSIX layer, so it needs
+          # msys-2.0.dll at runtime; bundle it so the release doesn't
+          # require a separate MSYS2 install.
+          cp /usr/bin/msys-2.0.dll artifact/bundle/msys-2.0.dll
+          ( cd artifact/bundle && zip -r ../busybox-windows-x86_64.zip . )
       - name: Windows networking smoke tests
         shell: msys2 {0}
         run: |
@@ -165,7 +171,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: busybox-windows-x86_64
-          path: artifact/busybox-windows-x86_64.exe
+          path: artifact/busybox-windows-x86_64.zip
 
   release:
     name: Create release
