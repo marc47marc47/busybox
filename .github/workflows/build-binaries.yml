@@ -133,6 +133,11 @@ jobs:
             sleep 1
           done
           grep -q 'busybox-nc-smoke' "$tmp/nc.out"
+          # Keep the console-oriented applets covered by the Windows build;
+          # full interactive sessions require a real terminal and are not
+          # suitable for a headless runner.
+          ./busybox.exe telnet --help >/dev/null
+          ./busybox.exe telnetd --help >/dev/null
       - uses: actions/upload-artifact@v4
         with:
           name: busybox-windows-x86_64
